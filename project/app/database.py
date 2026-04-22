@@ -1,17 +1,22 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy.pool import NullPool
 import logging
+import os
+
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.pool import NullPool
 
 
 logging.basicConfig()
 logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
-DATABASE_URL = "postgresql+asyncpg://user:password@db:5432/database"
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql+asyncpg://user:password@localhost:5432/database",
+)
 
 async_engine = create_async_engine(
     DATABASE_URL,
-    echo=True,
+    echo=os.getenv("SQLALCHEMY_ECHO", "true").lower() == "true",
     poolclass=NullPool,
     connect_args={
         "server_settings": {

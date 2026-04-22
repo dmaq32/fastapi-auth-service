@@ -1,10 +1,14 @@
 from datetime import datetime, timedelta, timezone
+import hashlib
+import os
+from pathlib import Path
 from typing import Annotated
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.responses import FileResponse, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jwt.exceptions import InvalidTokenError
 from passlib.context import CryptContext
@@ -13,13 +17,13 @@ from sqlalchemy import inspect, text
 import jwt
 import uvicorn
 
-from app.database import get_db, AsyncSessionLocal
+from app.database import AsyncSessionLocal, get_db
 from app.models import User as DBUser  
 
 
-SECRET_KEY = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
+ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 
 class Token(BaseModel):
     access_token: str
@@ -56,11 +60,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+BASE_DIR = Path(__file__).resolve().parent
+INDEX_HTML = BASE_DIR / "index.html"
+
 def verify_password(plain_password: str, hashed_password: str):
-    return pwd_context.verify(plain_password, hashed_password)
+    password_digest = hashlib.sha256(plain_password.encode("utf-8")).hexdigest()
+    return pwd_context.verify(password_digest, hashed_password)
 
 def get_password_hash(password: str):
-    return pwd_context.hash(password)
+    password_digest = hashlib.sha256(password.encode("utf-8")).hexdigest()
+    return pwd_context.hash(password_digest)
 
 async def get_user(db: AsyncSession, username: str):
     result = await db.execute(select(DBUser).where(DBUser.username == username))
@@ -113,6 +122,14 @@ async def create_user(db: AsyncSession, user: UserCreate):
 
     return user
 
+@app.get("/", include_in_schema=False)
+async def read_index():
+    return FileResponse(INDEX_HTML)
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
+
 @app.post("/token")
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
@@ -164,4 +181,3 @@ async def get_users(db: AsyncSession = Depends(get_db)):
     result = await db.execute(text("SELECT * FROM users"))
     users = result.all()
     return [dict(user._mapping) for user in users]
-
